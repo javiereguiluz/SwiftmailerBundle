@@ -11,7 +11,6 @@
 
 namespace Symfony\Bundle\SwiftmailerBundle\Tests\DependencyInjection;
 
-use Symfony\Bundle\SwiftmailerBundle\Tests\TestCase;
 use Symfony\Bundle\SwiftmailerBundle\DependencyInjection\SwiftmailerExtension;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Loader\XmlFileLoader;
@@ -19,14 +18,14 @@ use Symfony\Component\DependencyInjection\Loader\YamlFileLoader;
 use Symfony\Component\DependencyInjection\Loader\PhpFileLoader;
 use Symfony\Component\Config\FileLocator;
 
-class SwiftmailerExtensionTest extends TestCase
+class SwiftmailerExtensionTest extends \PHPUnit_Framework_TestCase
 {
     public function getConfigTypes()
     {
         return array(
             array('xml'),
             array('php'),
-            array('yml')
+            array('yml'),
         );
     }
 
@@ -39,6 +38,15 @@ class SwiftmailerExtensionTest extends TestCase
 
         $this->assertEquals('swiftmailer.mailer.default.transport', (string) $container->getAlias('swiftmailer.transport'));
         $this->assertEquals('swiftmailer.mailer.default.transport.smtp', (string) $container->getAlias('swiftmailer.mailer.default.transport'));
+    }
+
+    /**
+     * @dataProvider getConfigTypes
+     */
+    public function testMailerNullConfig($type)
+    {
+        $container = $this->loadContainerFromFile('null_mailer', $type);
+        $this->assertEquals('swiftmailer.mailer.failover.transport', (string) $container->getAlias('swiftmailer.transport'));
     }
 
     /**
@@ -135,8 +143,22 @@ class SwiftmailerExtensionTest extends TestCase
         $this->assertEquals('1000', $container->getParameter('swiftmailer.mailer.third_mailer.transport.smtp.timeout'));
         $this->assertEquals('127.0.0.1', $container->getParameter('swiftmailer.mailer.third_mailer.transport.smtp.source_ip'));
     }
+    /**
+     * @dataProvider getConfigTypes
+     */
+    public function testUrls($type)
+    {
+        $container = $this->loadContainerFromFile('urls', $type);
 
-        /**
+        $this->assertEquals('example.com', $container->getParameter('swiftmailer.mailer.smtp_mailer.transport.smtp.host'));
+        $this->assertEquals('12345', $container->getParameter('swiftmailer.mailer.smtp_mailer.transport.smtp.port'));
+        $this->assertEquals('tls', $container->getParameter('swiftmailer.mailer.smtp_mailer.transport.smtp.encryption'));
+        $this->assertEquals('username', $container->getParameter('swiftmailer.mailer.smtp_mailer.transport.smtp.username'));
+        $this->assertEquals('password', $container->getParameter('swiftmailer.mailer.smtp_mailer.transport.smtp.password'));
+        $this->assertEquals('login', $container->getParameter('swiftmailer.mailer.smtp_mailer.transport.smtp.auth_mode'));
+    }
+
+    /**
      * @dataProvider getConfigTypes
      */
     public function testOneMailer($type)
@@ -248,7 +270,19 @@ class SwiftmailerExtensionTest extends TestCase
 
         $this->assertSame(array('swiftmailer.default.plugin' => array(array())), $container->getDefinition('swiftmailer.mailer.default.plugin.redirecting')->getTags());
         $this->assertSame('single@host.com', $container->getParameter('swiftmailer.mailer.default.single_address'));
+        $this->assertSame(array('single@host.com'), $container->getParameter('swiftmailer.mailer.default.delivery_addresses'));
         $this->assertEquals(array('/foo@.*/'), $container->getParameter('swiftmailer.mailer.default.delivery_whitelist'));
+    }
+
+    /**
+     * @dataProvider getConfigTypes
+     */
+    public function testMultiRedirectionConfig($type)
+    {
+        $container = $this->loadContainerFromFile('redirect_multi', $type);
+
+        $this->assertSame(array('swiftmailer.default.plugin' => array(array())), $container->getDefinition('swiftmailer.mailer.default.plugin.redirecting')->getTags());
+        $this->assertSame(array('first@host.com', 'second@host.com'), $container->getParameter('swiftmailer.mailer.default.delivery_addresses'));
     }
 
     /**
@@ -274,8 +308,9 @@ class SwiftmailerExtensionTest extends TestCase
     }
 
     /**
-     * @param  string           $file
-     * @param  string           $type
+     * @param string $file
+     * @param string $type
+     *
      * @return ContainerBuilder
      */
     private function loadContainerFromFile($file, $type)
@@ -286,7 +321,7 @@ class SwiftmailerExtensionTest extends TestCase
         $container->setParameter('kernel.cache_dir', '/tmp');
 
         $container->registerExtension(new SwiftmailerExtension());
-        $locator = new FileLocator(__DIR__ . '/Fixtures/config/' . $type);
+        $locator = new FileLocator(__DIR__.'/Fixtures/config/'.$type);
 
         switch ($type) {
             case 'xml':
@@ -302,7 +337,7 @@ class SwiftmailerExtensionTest extends TestCase
                 break;
         }
 
-        $loader->load($file . '.' . $type);
+        $loader->load($file.'.'.$type);
 
         $container->getCompilerPassConfig()->setOptimizationPasses(array());
         $container->getCompilerPassConfig()->setRemovingPasses(array());

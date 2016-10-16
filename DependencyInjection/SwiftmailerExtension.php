@@ -75,6 +75,37 @@ class SwiftmailerExtension extends Extension
             $transport = $mailer['transport'];
         }
 
+        if (null !== $mailer['url']) {
+            $parts = parse_url($mailer['url']);
+            if (!empty($parts['scheme'])) {
+                $transport = $parts['scheme'];
+            }
+
+            if (!empty($parts['user'])) {
+                $mailer['username'] = $parts['user'];
+            }
+            if (!empty($parts['pass'])) {
+                $mailer['password'] = $parts['pass'];
+            }
+            if (!empty($parts['host'])) {
+                $mailer['host'] = $parts['host'];
+            }
+            if (!empty($parts['port'])) {
+                $mailer['port'] = $parts['port'];
+            }
+            if (!empty($parts['query'])) {
+                $query = array();
+                parse_str($parts['query'], $query);
+                if (!empty($query['encryption'])) {
+                    $mailer['encryption'] = $query['encryption'];
+                }
+                if (!empty($query['auth_mode'])) {
+                    $mailer['auth_mode'] = $query['auth_mode'];
+                }
+            }
+        }
+        unset($mailer['url']);
+
         $container->setParameter(sprintf('swiftmailer.mailer.%s.transport.name', $name), $transport);
 
         if (isset($mailer['disable_delivery']) && $mailer['disable_delivery']) {
@@ -118,9 +149,9 @@ class SwiftmailerExtension extends Extension
             $authDecorator = new DefinitionDecorator('swiftmailer.transport.authhandler.abstract');
             $container
                 ->setDefinition(sprintf('swiftmailer.mailer.%s.transport.authhandler', $name), $authDecorator)
-                ->addMethodCall('setUsername', array('%swiftmailer.mailer.' . $name . '.transport.smtp.username%'))
-                ->addMethodCall('setPassword', array('%swiftmailer.mailer.' . $name . '.transport.smtp.password%'))
-                ->addMethodCall('setAuthMode', array('%swiftmailer.mailer.' . $name . '.transport.smtp.auth_mode%'));
+                ->addMethodCall('setUsername', array(sprintf('%%swiftmailer.mailer.%s.transport.smtp.username%%', $name)))
+                ->addMethodCall('setPassword', array(sprintf('%%swiftmailer.mailer.%s.transport.smtp.password%%', $name)))
+                ->addMethodCall('setAuthMode', array(sprintf('%%swiftmailer.mailer.%s.transport.smtp.auth_mode%%', $name)));
 
             $bufferDecorator = new DefinitionDecorator('swiftmailer.transport.buffer.abstract');
             $container
@@ -134,11 +165,11 @@ class SwiftmailerExtension extends Extension
                     array(new Reference(sprintf('swiftmailer.mailer.%s.transport.authhandler', $name))),
                     new Reference(sprintf('swiftmailer.mailer.%s.transport.eventdispatcher', $name)),
                 ))
-                ->addMethodCall('setHost', array('%swiftmailer.mailer.' . $name . '.transport.smtp.host%'))
-                ->addMethodCall('setPort', array('%swiftmailer.mailer.' . $name . '.transport.smtp.port%'))
-                ->addMethodCall('setEncryption', array('%swiftmailer.mailer.' . $name . '.transport.smtp.encryption%'))
-                ->addMethodCall('setTimeout', array('%swiftmailer.mailer.' . $name . '.transport.smtp.timeout%'))
-                ->addMethodCall('setSourceIp', array('%swiftmailer.mailer.' . $name . '.transport.smtp.source_ip%'))
+                ->addMethodCall('setHost', array(sprintf('%%swiftmailer.mailer.%s.transport.smtp.host%%', $name)))
+                ->addMethodCall('setPort', array(sprintf('%%swiftmailer.mailer.%s.transport.smtp.port%%', $name)))
+                ->addMethodCall('setEncryption', array(sprintf('%%swiftmailer.mailer.%s.transport.smtp.encryption%%', $name)))
+                ->addMethodCall('setTimeout', array(sprintf('%%swiftmailer.mailer.%s.transport.smtp.timeout%%', $name)))
+                ->addMethodCall('setSourceIp', array(sprintf('%%swiftmailer.mailer.%s.transport.smtp.source_ip%%', $name)))
             ;
             $container->setAlias(sprintf('swiftmailer.mailer.%s.transport', $name), sprintf('swiftmailer.mailer.%s.transport.%s', $name, $transport));
         } elseif ('sendmail' === $transport) {
@@ -151,7 +182,7 @@ class SwiftmailerExtension extends Extension
                 ->setDefinition(sprintf('swiftmailer.mailer.%s.transport.%s', $name, $transport), $definitionDecorator)
                 ->setArguments(array(
                     new Reference(sprintf('swiftmailer.mailer.%s.transport.buffer', $name)),
-                    new Reference(sprintf('swiftmailer.mailer.%s.transport.eventdispatcher', $name))
+                    new Reference(sprintf('swiftmailer.mailer.%s.transport.eventdispatcher', $name)),
                 ))
             ;
             $container->setAlias(sprintf('swiftmailer.mailer.%s.transport', $name), sprintf('swiftmailer.mailer.%s.transport.%s', $name, $transport));
@@ -190,7 +221,7 @@ class SwiftmailerExtension extends Extension
                 $container->setAlias(sprintf('swiftmailer.mailer.%s.spool.service', $name), $mailer['spool']['id']);
             } else {
                 foreach (array('path') as $key) {
-                    $container->setParameter(sprintf('swiftmailer.spool.%s.%s.%s', $name, $type, $key), $mailer['spool'][$key] . '/' . $name);
+                    $container->setParameter(sprintf('swiftmailer.spool.%s.%s.%s', $name, $type, $key), $mailer['spool'][$key].'/'.$name);
                 }
             }
 
@@ -275,14 +306,15 @@ class SwiftmailerExtension extends Extension
 
     protected function configureMailerDeliveryAddress($name, array $mailer, ContainerBuilder $container, $isDefaultMailer = false)
     {
-        if (isset($mailer['delivery_address']) && $mailer['delivery_address']) {
-            $container->setParameter(sprintf('swiftmailer.mailer.%s.single_address', $name), $mailer['delivery_address']);
+        if (count($mailer['delivery_addresses']) > 0) {
+            $container->setParameter(sprintf('swiftmailer.mailer.%s.single_address', $name), $mailer['delivery_addresses'][0]);
+            $container->setParameter(sprintf('swiftmailer.mailer.%s.delivery_addresses', $name), $mailer['delivery_addresses']);
             $container->setParameter(sprintf('swiftmailer.mailer.%s.delivery_whitelist', $name), $mailer['delivery_whitelist']);
             $definitionDecorator = new DefinitionDecorator('swiftmailer.plugin.redirecting.abstract');
             $container
                 ->setDefinition(sprintf('swiftmailer.mailer.%s.plugin.redirecting', $name), $definitionDecorator)
                 ->setArguments(array(
-                    sprintf('%%swiftmailer.mailer.%s.single_address%%', $name),
+                    sprintf('%%swiftmailer.mailer.%s.delivery_addresses%%', $name),
                     sprintf('%%swiftmailer.mailer.%s.delivery_whitelist%%', $name),
                 ))
             ;
